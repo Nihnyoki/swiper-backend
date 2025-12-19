@@ -1,8 +1,8 @@
 // src/person/person.controller.ts
 // src/person/person.controller.ts
-import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UseInterceptors, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UploadedFiles, UseInterceptors, HttpException, HttpStatus } from '@nestjs/common';
 import { Express } from "express";
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Person, PersonDocument } from './schemas/person.schema';
@@ -20,76 +20,85 @@ import { existsSync, mkdirSync } from 'fs';
 export class PersonController {
   constructor(@InjectModel(Person.name) private readonly personModel: Model<PersonDocument>, private readonly personService: PersonService) {}
 
-@Post('media/:personId')
-@UseInterceptors(
-  FileInterceptor('file', {
-    storage: diskStorage({
-      destination: (req, file, cb) => {
-        // ⚠️ Headers are always lowercased
-        const mediaType = req.headers['x-mediatype'] as
-          | 'video'
-          | 'image'
-          | 'audio'
-          | 'pdf';
+  @Post('media/:personId')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          // ⚠️ headers are always lowercased
+          const mediaType = req.headers['x-mediatype'] as
+            | 'video'
+            | 'image'
+            | 'audio'
+            | 'pdf'
+            | 'note';
 
-        const basePath = './public';
+          const basePath = './public';
 
-        const mediaFolders: Record<string, string> = {
-          video: 'videos',
-          image: 'images',
-          audio: 'audios',
-          pdf: 'pdfs',
-        };
+          const mediaFolders: Record<string, string> = {
+            video: 'videos',
+            image: 'images',
+            audio: 'audios',
+            pdf: 'pdfs',
+            note: 'notes',
+          };
 
-        const folder = mediaFolders[mediaType];
+          const folder = mediaFolders[mediaType];
 
-        if (!folder) {
-          return cb(
-            new Error(`Unsupported media type: ${mediaType}`),
-            '',
+          if (!folder) {
+            return cb(
+              new Error(`Unsupported media type: ${mediaType}`),
+              '',
+            );
+          }
+
+          const uploadPath = join(basePath, folder);
+
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+
+          cb(null, uploadPath);
+        },
+
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+
+          cb(
+            null,
+            `MEDIA-${uniqueSuffix}${extname(file.originalname)}`,
           );
-        }
-
-        const uploadPath = join(basePath, folder);
-
-        if (!existsSync(uploadPath)) {
-          mkdirSync(uploadPath, { recursive: true });
-        }
-
-        cb(null, uploadPath);
-      },
-
-      filename: (req, file, cb) => {
-        const uniqueSuffix =
-          Date.now() + '-' + Math.round(Math.random() * 1e9);
-
-        cb(
-          null,
-          `MEDIA-${uniqueSuffix}${extname(file.originalname)}`,
-        );
-      },
+        },
+      }),
+      limits: { fileSize: 100 * 1024 * 1024 },
     }),
-    limits: { fileSize: 100 * 1024 * 1024 },
-  }),
-)
-@ApiOperation({ summary: 'Upload a new media file for a person' })
-@ApiConsumes('multipart/form-data')
-@ApiParam({ name: 'personId', required: true })
-async uploadMedia(
-  @Param('personId') personId: string,
-  @UploadedFile() file: Express.Multer.File,
-  @Headers('x-category') category: string,
-  @Headers('x-mediatype') mediaType: 'video' | 'image' | 'audio' | 'pdf',
-  @Body() body: any,
-) {
-  return this.personService.uploadMediaForPerson(
-    personId,
-    file,
-    category,
-    mediaType,
-    body,
-  );
-}
+  )
+  
+  @ApiOperation({ summary: 'Upload multiple media files for a person' })
+  @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'personId', required: true })
+  async uploadMedia(
+    @Param('personId') personId: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Headers('x-category') category: string,
+    @Headers('x-mediatype')
+    mediaType:
+      | 'video'
+      | 'image'
+      | 'audio'
+      | 'pdf'
+      | 'note',
+    @Body() body: any,
+  ) {
+    return this.personService.uploadMultipleMediaForPerson(
+      personId,
+      files,
+      category,
+      mediaType,
+      body,
+    );
+  }
 
 
   @Post()

@@ -1,9 +1,10 @@
 // src/person/schemas/video.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { MediaBase } from './media.schema';
 
 @Schema({ _id: false }) // embedded sub-document
-export class Video {
+export class Video extends MediaBase {
   @Prop({ required: true })
   id: string;
 

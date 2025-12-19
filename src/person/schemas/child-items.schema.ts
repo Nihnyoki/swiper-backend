@@ -1,6 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Video, VideoSchema } from './video.schema';
-import { Audio, AudioSchema } from './audio.schema';
+import { Video } from './video.schema';
+import { Audio } from './audio.schema';
+import { Note } from './note.schema';
+import { MediaBaseSchema } from './media.schema';
 
 @Schema({ _id: false })
 export class ChildItems {
@@ -11,10 +13,10 @@ export class ChildItems {
   val: string;
 
   @Prop({
-    type: [VideoSchema, AudioSchema],
+    type: [MediaBaseSchema],
     default: [],
   })
-  data: Array<Video | Audio>;
+  data: Array<Video | Audio | Note>;
 }
 
 export const ChildItemsSchema = SchemaFactory.createForClass(ChildItems);

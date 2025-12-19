@@ -1,18 +1,18 @@
 // src/person/schemas/audio.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { MediaBase } from './media.schema';
+import { NoteMedia } from './note-media.schema';
 
 @Schema({ _id: false }) // embedded sub-document
-export class Audio extends MediaBase {
+export class Note {
   @Prop({ required: true })
   id: string;
 
-  @Prop({ required: true, default: 'audio' })
+  @Prop({ required: true, default: 'note' })
   type: string;
 
   @Prop({ required: true })
-  title: string;
+  title?: string;
 
   @Prop({ default: '' })
   description?: string;
@@ -24,23 +24,26 @@ export class Audio extends MediaBase {
   tags?: string[];
 
   @Prop({ default: '' })
-  creator?: string;
-
-  @Prop({ required: true })
-  url: string;
-
-  @Prop({ default: 0 })
-  duration?: number;
+  lat: string;
 
   @Prop({ default: '' })
-  album?: string;
+  lng: string;
 
   @Prop({ default: '' })
-  artist?: string;
+  remind?: boolean;
+
+  @Prop({ default: '' })
+  audio?: NoteMedia;
+  
+  @Prop({ default: '' })
+  image?: NoteMedia;
+
+  @Prop()
+  url?: string;
 
   @Prop({ default: () => new Date().toISOString() })
   createdAt: string;
 }
 
-export type AudioDocument = Audio & Document;
-export const AudioSchema = SchemaFactory.createForClass(Audio);
+export type NoteDocument = Note & Document;
+export const NoteSchema = SchemaFactory.createForClass(Note);

@@ -3,8 +3,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { Person, PersonDocument } from './schemas/person.schema';
+import { Audio } from './schemas/audio.schema';
 
-type MediaType = 'video' | 'image' | 'audio' | 'pdf';
+type MediaType = 'video' | 'image' | 'audio' | 'pdf' | 'note';
 
 @Injectable()
 export class PersonService {
@@ -118,152 +119,203 @@ export class PersonService {
     return personsLists;
   }
 
-async uploadMediaForPerson(
-  personId: string,
-  file: Express.Multer.File,
-  category: string,
-  mediaType: MediaType,
-  body: any,
-) {
-  if (!file) {
-    throw new HttpException(
-      'Media file is required',
-      HttpStatus.BAD_REQUEST,
-    );
-  }
+  async uploadMultipleMediaForPerson(
+    personId: string,
+    files: Express.Multer.File[] | undefined,
+    category: string,
+    mediaType: MediaType,
+    body: any,
+  ) {
+    if (!mediaType) {
+      throw new HttpException(
+        'x-mediatype header is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
-  if (!category) {
-    throw new HttpException(
-      'x-category header is required',
-      HttpStatus.BAD_REQUEST,
-    );
-  }
+    const filesRequired = !['note'].includes(mediaType);
 
-  if (!mediaType) {
-    throw new HttpException(
-      'x-mediaType header is required',
-      HttpStatus.BAD_REQUEST,
-    );
-  }
+    if (filesRequired && (!files || files.length === 0)) {
+      throw new HttpException(
+        'At least one media file is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
-  const baseUrl = 'http://localhost:3000';
+    if (!category) {
+      throw new HttpException(
+        'x-category header is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
-  /**
-   * 🔑 Media-specific object factory
-   */
-  const mediaFactories: Record<MediaType, any> = {
-    video: {
-      id: `vid-${uuidv4()}`,
-      type: 'video',
-      title: body.title || file.originalname,
-      description: body.description || '',
-      category,
-      tags: body.tags
-        ? body.tags.split(',').map((t: string) => t.trim())
-        : [],
-      creator: body.creator || '',
-      url: `${baseUrl}/videos/${file.filename}`,
-      thumbnailUrl: '',
-      duration: 0,
-      createdAt: new Date().toISOString(),
-    },
+    const baseUrl = 'http://localhost:3000';
 
-    image: {
-      id: `img-${uuidv4()}`,
-      type: 'image',
-      title: body.title || file.originalname,
-      description: body.description || '',
-      category,
-      tags: body.tags
-        ? body.tags.split(',').map((t: string) => t.trim())
-        : [],
-      creator: body.creator || '',
-      url: `${baseUrl}/images/${file.filename}`,
-      width: 0,
-      height: 0,
-      createdAt: new Date().toISOString(),
-    },
-
-    audio: {
-      id: `aud-${uuidv4()}`,
-      type: 'audio',
-      title: body.title || file.originalname,
-      description: body.description || '',
-      category,
-      tags: body.tags
-        ? body.tags.split(',').map((t: string) => t.trim())
-        : [],
-      creator: body.creator || '',
-      url: `${baseUrl}/audios/${file.filename}`,
-      duration: 0,
-      createdAt: new Date().toISOString(),
-    },
-
-    pdf: {
-      id: `pdf-${uuidv4()}`,
-      type: 'pdf',
-      title: body.title || file.originalname,
-      description: body.description || '',
-      category,
-      tags: body.tags
-        ? body.tags.split(',').map((t: string) => t.trim())
-        : [],
-      creator: body.creator || '',
-      url: `${baseUrl}/pdfs/${file.filename}`,
-      pageCount: 0,
-      createdAt: new Date().toISOString(),
-    },
-  };
-
-  const mediaItem = mediaFactories[mediaType];
-
-  if (!mediaItem) {
-    throw new HttpException(
-      `Unsupported media type: ${mediaType}`,
-      HttpStatus.BAD_REQUEST,
-    );
-  }
-
-  const person = await this.personModel.findById(personId);
-  if (!person) {
-    throw new HttpException('Person not found', HttpStatus.NOT_FOUND);
-  }
-
-  if (!person.THINGS) {
-    person.THINGS = [];
-  }
-
-  let thing = person.THINGS.find((t) => t.val === category);
-  if (!thing) {
-    thing = {
-      key: person.THINGS.length,
-      val: category,
-      childItems: [],
+    const normalizeFiles = (
+      files?: Express.Multer.File[] | Express.Multer.File,
+    ): Express.Multer.File[] => {
+      if (!files) return [];
+      return Array.isArray(files) ? files : [files];
     };
-    person.THINGS.push(thing);
-  }
 
-  let thingsChild = thing.childItems.find((c) => c.val === 'Things');
-  if (!thingsChild) {
-    thingsChild = {
-      key: thing.childItems.length,
-      val: 'Things',
-      data: [],
+    const isAudio = (file: Express.Multer.File) =>
+      file.mimetype.startsWith('audio/');
+
+    const isImage = (file: Express.Multer.File) =>
+      file.mimetype.startsWith('image/');
+
+    const createMediaItem = (
+      type: MediaType,
+      files?: Express.Multer.File[] | Express.Multer.File,
+    ) => {
+      const normalizedFiles = normalizeFiles(files);
+
+      const base = {
+        id: `${type}-${uuidv4()}`,
+        type,
+        title: body.title || normalizedFiles[0]?.originalname || 'Note',
+        description: body.description || '',
+        category,
+        tags: body.tags
+          ? body.tags.split(',').map((t: string) => t.trim())
+          : [],
+        creator: body.creator || '',
+        createdAt: new Date().toISOString(),
+      };
+
+      if (type === 'note') {
+        let audio: { type: string; url: string } | undefined;
+        let image: { type: string; url: string } | undefined;
+
+        for (const file of normalizedFiles) {
+          if (!audio && isAudio(file)) {
+            audio = {
+              type: 'audio',
+              url: `${baseUrl}/notes/${file.filename}`,
+            };
+          }
+
+          if (!image && isImage(file)) {
+            image = {
+              type: 'image',
+              url: `${baseUrl}/notes/${file.filename}`,
+            };
+          }
+        }
+
+        return {
+          ...base,
+          id: `note-${uuidv4()}`,
+          type: 'note',
+          text: body.text || '',
+          lat: body.lat ? String(body.lat) : '',
+          lng: body.lng ? String(body.lng) : '',
+          remind: body.remind === 'true',
+          audio,
+          image,
+
+          // schema-required but unused
+          url: '',
+          duration: 0,
+          album: '',
+          artist: '',
+        };
+      }
+
+      // 👇 Non-note media (1 file per item)
+      const file = normalizedFiles[0];
+
+      switch (type) {
+        case 'video':
+          return {
+            ...base,
+            id: `vid-${uuidv4()}`,
+            type: 'video',
+            url: `${baseUrl}/videos/${file.filename}`,
+            duration: 0,
+          };
+
+        case 'image':
+          return {
+            ...base,
+            id: `img-${uuidv4()}`,
+            type: 'image',
+            url: `${baseUrl}/images/${file.filename}`,
+          };
+
+        case 'audio':
+          return {
+            ...base,
+            id: `aud-${uuidv4()}`,
+            type: 'audio',
+            url: `${baseUrl}/audios/${file.filename}`,
+            duration: 0,
+          };
+
+        case 'pdf':
+          return {
+            ...base,
+            id: `pdf-${uuidv4()}`,
+            type: 'pdf',
+            url: `${baseUrl}/pdfs/${file.filename}`,
+            pageCount: 0,
+          };
+
+        default:
+          throw new HttpException(
+            `Unsupported media type: ${type}`,
+            HttpStatus.BAD_REQUEST,
+          );
+      }
     };
-    thing.childItems.push(thingsChild);
+
+
+    const person = await this.personModel.findById(personId);
+    if (!person) {
+      throw new HttpException('Person not found', HttpStatus.NOT_FOUND);
+    }
+
+    if (!person.THINGS) person.THINGS = [];
+
+    let thing = person.THINGS.find(t => t.val === category);
+    if (!thing) {
+      thing = {
+        key: person.THINGS.length,
+        val: category,
+        childItems: [],
+      };
+      person.THINGS.push(thing);
+    }
+
+    let child = thing.childItems.find(c => c.val === 'Things');
+    if (!child) {
+      child = {
+        key: thing.childItems.length,
+        val: 'Things',
+        data: [],
+      };
+      thing.childItems.push(child);
+    }
+
+    const createdItems =
+      mediaType === 'note'
+        ? [createMediaItem('note', files)]
+        : normalizeFiles(files).map(file =>
+          createMediaItem(mediaType, file),
+        );
+
+    child.data.push(...createdItems);
+
+    person.markModified('THINGS');
+    await person.save();
+
+    return {
+      success: true,
+      count: createdItems.length,
+      [mediaType]: createdItems,
+    };
   }
 
-  thingsChild.data.push(mediaItem);
-
-  // 🔥 IMPORTANT: deep mutation
-  person.markModified('THINGS');
-  await person.save();
-
-  return {
-    success: true,
-    [mediaType]: mediaItem, // 👈 dynamic response key
-  };
-}
 
 
 }
