@@ -2,6 +2,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import { NoteMedia } from './note-media.schema';
+import { MediaBaseSchema } from './media.schema';
 
 @Schema({ _id: false }) // embedded sub-document
 export class Note {
@@ -29,7 +30,12 @@ export class Note {
   @Prop({ default: '' })
   lng: string;
 
-  @Prop({ default: '' })
+  @Prop({
+    required: false,
+    type: Boolean,
+    default: false,
+    set: v => v === true || v === 'true'
+  })
   remind?: boolean;
 
   @Prop({ default: '' })
@@ -38,8 +44,8 @@ export class Note {
   @Prop({ default: '' })
   image?: NoteMedia;
 
-  @Prop()
-  url?: string;
+    @Prop()
+    url?: string;
 
   @Prop({ default: () => new Date().toISOString() })
   createdAt: string;
@@ -47,3 +53,4 @@ export class Note {
 
 export type NoteDocument = Note & Document;
 export const NoteSchema = SchemaFactory.createForClass(Note);
+

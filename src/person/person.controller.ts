@@ -14,67 +14,29 @@ import { PersonService } from './person.service';
 import { v4 as uuidv4 } from 'uuid'; // for unique video IDs
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { StoredMedia } from './interfaces/stored-media.interface';
 
 @ApiTags('Persons')
 @Controller('api/persons')
 export class PersonController {
   constructor(@InjectModel(Person.name) private readonly personModel: Model<PersonDocument>, private readonly personService: PersonService) {}
 
+  // person.controller.ts
   @Post('media/:personId')
   @UseInterceptors(
     FilesInterceptor('files', 10, {
       storage: diskStorage({
-        destination: (req, file, cb) => {
-          // ⚠️ headers are always lowercased
-          const mediaType = req.headers['x-mediatype'] as
-            | 'video'
-            | 'image'
-            | 'audio'
-            | 'pdf'
-            | 'note';
-
-          const basePath = './public';
-
-          const mediaFolders: Record<string, string> = {
-            video: 'videos',
-            image: 'images',
-            audio: 'audios',
-            pdf: 'pdfs',
-            note: 'notes',
-          };
-
-          const folder = mediaFolders[mediaType];
-
-          if (!folder) {
-            return cb(
-              new Error(`Unsupported media type: ${mediaType}`),
-              '',
-            );
-          }
-
-          const uploadPath = join(basePath, folder);
-
-          if (!existsSync(uploadPath)) {
-            mkdirSync(uploadPath, { recursive: true });
-          }
-
-          cb(null, uploadPath);
-        },
-
+        destination: './public/tmp', // temporary, service will move files
         filename: (req, file, cb) => {
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);
-
-          cb(
-            null,
-            `MEDIA-${uniqueSuffix}${extname(file.originalname)}`,
-          );
+          cb(null, `MEDIA-${uniqueSuffix}${extname(file.originalname)}`);
         },
       }),
       limits: { fileSize: 100 * 1024 * 1024 },
     }),
   )
-  
+
   @ApiOperation({ summary: 'Upload multiple media files for a person' })
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'personId', required: true })
@@ -91,6 +53,11 @@ export class PersonController {
       | 'note',
     @Body() body: any,
   ) {
+    await this.personService.handleMediaUpload(
+      personId,
+      mediaType,
+      files,
+    );
     return this.personService.uploadMultipleMediaForPerson(
       personId,
       files,
@@ -99,7 +66,6 @@ export class PersonController {
       body,
     );
   }
-
 
   @Post()
   @UseInterceptors(

@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, NotFoundException, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { Person, PersonDocument } from './schemas/person.schema';
-import { Audio } from './schemas/audio.schema';
+import { existsSync, mkdirSync, renameSync } from 'fs';
+import { join } from 'path';
+import { StoredMedia } from './interfaces/stored-media.interface';
 
 type MediaType = 'video' | 'image' | 'audio' | 'pdf' | 'note';
 
@@ -11,6 +13,14 @@ type MediaType = 'video' | 'image' | 'audio' | 'pdf' | 'note';
 export class PersonService {
 
   constructor(@InjectModel(Person.name) private personModel: Model<PersonDocument>) {}
+
+  private readonly mediaFolders: Record<string, string> = {
+    video: 'videos',
+    image: 'images',
+    audio: 'audios',
+    pdf: 'pdfs',
+    note: 'notes',
+  };
 
   async findPeople(): Promise<Person[]> {
     const people = await this.personModel.find();
@@ -119,11 +129,77 @@ export class PersonService {
     return personsLists;
   }
 
+  async handleMediaUpload(
+    personId: string,
+    mediaType: 'video' | 'image' | 'audio' | 'pdf' | 'note',
+    files: Express.Multer.File[],
+  ) {
+    const folder = this.mediaFolders[mediaType];
+    if (!folder) {
+      throw new BadRequestException(
+        `Unsupported media type: ${mediaType}`,
+      );
+    }
+
+    const person = await this.personModel.findById(personId).lean();
+    if (!person) {
+      throw new NotFoundException('Person not found');
+    }
+
+    // sanitize person name for filesystem use
+    const safePersonName = person.NAME.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    const basePath = join(
+      process.cwd(),
+      'public',
+      folder,
+      safePersonName,
+    );
+
+    console.log(`Called: ${basePath}`);
+
+    if (!existsSync(basePath)) {
+      mkdirSync(basePath, { recursive: true });
+    }
+
+    const storedFiles: StoredMedia[] = [];
+
+    for (const file of files) {
+      const targetPath = join(basePath, file.filename);
+
+      console.log(`file.path : ${file.path}`);
+
+      // move file from tmp → final folder
+      renameSync(file.path, targetPath);
+
+      storedFiles.push({
+        mediaType,
+        filename: file.filename,
+        path: `/public/${folder}/${safePersonName}/${file.filename}`,
+        size: file.size,
+        mimetype: file.mimetype,
+      });
+    }
+
+    /**
+     * OPTIONAL:
+     * Persist references in THINGS or a Media collection later
+     */
+
+    return {
+      personId,
+      personName: person.NAME,
+      mediaType,
+      files: storedFiles,
+    };
+  }
+
+
   async uploadMultipleMediaForPerson(
     personId: string,
     files: Express.Multer.File[] | undefined,
     category: string,
-    mediaType: MediaType,
+    mediaType: MediaType, 
     body: any,
   ) {
     if (!mediaType) {
@@ -149,7 +225,22 @@ export class PersonService {
       );
     }
 
-    const baseUrl = 'http://localhost:3000';
+    //const baseUrl = 'http://localhost:3000';
+    const person = await this.personModel.findById(personId);
+    if (!person) {
+      throw new NotFoundException('Person not found');
+    }
+    const safePersonName = person.NAME.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const folder = this.mediaFolders[mediaType];
+    const baseUrl = new URL(
+      `${folder}/${safePersonName}`,
+      'http://localhost:3000',
+    ).toString();
+
+
+    console.log(`Called baseUrl: ${baseUrl}`);
+
+
 
     const normalizeFiles = (
       files?: Express.Multer.File[] | Express.Multer.File,
@@ -191,14 +282,14 @@ export class PersonService {
           if (!audio && isAudio(file)) {
             audio = {
               type: 'audio',
-              url: `${baseUrl}/notes/${file.filename}`,
+              url: `${baseUrl}/${file.filename}`,
             };
           }
 
           if (!image && isImage(file)) {
             image = {
               type: 'image',
-              url: `${baseUrl}/notes/${file.filename}`,
+              url: `${baseUrl}/${file.filename}`,
             };
           }
         }
@@ -213,25 +304,24 @@ export class PersonService {
           remind: body.remind === 'true',
           audio,
           image,
-
           // schema-required but unused
-          url: '',
-          duration: 0,
-          album: '',
-          artist: '',
+          url: body.url || undefined,
         };
       }
 
       // 👇 Non-note media (1 file per item)
       const file = normalizedFiles[0];
 
+      console.log(`before switch on type: ${type}`);
+
       switch (type) {
         case 'video':
+          console.log(`after switch on type: ${type}`);
           return {
             ...base,
             id: `vid-${uuidv4()}`,
             type: 'video',
-            url: `${baseUrl}/videos/${file.filename}`,
+            url: `${baseUrl}/${file.filename}`,
             duration: 0,
           };
 
@@ -240,7 +330,7 @@ export class PersonService {
             ...base,
             id: `img-${uuidv4()}`,
             type: 'image',
-            url: `${baseUrl}/images/${file.filename}`,
+            url: `${baseUrl}/${file.filename}`,
           };
 
         case 'audio':
@@ -248,7 +338,7 @@ export class PersonService {
             ...base,
             id: `aud-${uuidv4()}`,
             type: 'audio',
-            url: `${baseUrl}/audios/${file.filename}`,
+            url: `${baseUrl}/${file.filename}`,
             duration: 0,
           };
 
@@ -257,7 +347,7 @@ export class PersonService {
             ...base,
             id: `pdf-${uuidv4()}`,
             type: 'pdf',
-            url: `${baseUrl}/pdfs/${file.filename}`,
+            url: `${baseUrl}/${file.filename}`,
             pageCount: 0,
           };
 
@@ -269,8 +359,6 @@ export class PersonService {
       }
     };
 
-
-    const person = await this.personModel.findById(personId);
     if (!person) {
       throw new HttpException('Person not found', HttpStatus.NOT_FOUND);
     }
@@ -304,6 +392,8 @@ export class PersonService {
           createMediaItem(mediaType, file),
         );
 
+    console.log(`createdItems : ${JSON.stringify(createdItems)}`);
+
     child.data.push(...createdItems);
 
     person.markModified('THINGS');
@@ -315,7 +405,5 @@ export class PersonService {
       [mediaType]: createdItems,
     };
   }
-
-
-
+  
 }
