@@ -16,7 +16,7 @@ async function bootstrap() {
 
   app.enableCors({ 
    origin: [
-      'https://swiper-cards.up.railway.app',
+      'https://swiper-cards.up.railway.app/',
       'http://localhost:5173'
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
