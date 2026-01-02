@@ -6,6 +6,7 @@ import { Person, PersonDocument } from './schemas/person.schema';
 import { existsSync, mkdirSync, renameSync } from 'fs';
 import { join } from 'path';
 import { StoredMedia } from './interfaces/stored-media.interface';
+import { supabase } from './common/supabase';
 
 type MediaType = 'video' | 'image' | 'audio' | 'pdf' | 'note';
 
@@ -13,6 +14,9 @@ type MediaType = 'video' | 'image' | 'audio' | 'pdf' | 'note';
 export class PersonService {
 
   constructor(@InjectModel(Person.name) private personModel: Model<PersonDocument>) {}
+
+    private supabase = supabase;
+
 
   private readonly mediaFolders: Record<string, string> = {
     video: 'videos',
@@ -195,215 +199,143 @@ export class PersonService {
   }
 
 
-  async uploadMultipleMediaForPerson(
-    personId: string,
-    files: Express.Multer.File[] | undefined,
-    category: string,
-    mediaType: MediaType, 
-    body: any,
-  ) {
-    if (!mediaType) {
-      throw new HttpException(
-        'x-mediatype header is required',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    const filesRequired = !['note'].includes(mediaType);
-
-    if (filesRequired && (!files || files.length === 0)) {
-      throw new HttpException(
-        'At least one media file is required',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    if (!category) {
-      throw new HttpException(
-        'x-category header is required',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    //const baseUrl = 'http://localhost:3000';
-    const person = await this.personModel.findById(personId);
-    if (!person) {
-      throw new NotFoundException('Person not found');
-    }
-    const safePersonName = person.NAME.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const folder = this.mediaFolders[mediaType];
-    const baseUrl = new URL(
-      `${folder}/${safePersonName}`,
-      'http://localhost:3000',
-    ).toString();
-
-
-    console.log(`Called baseUrl: ${baseUrl}`);
-
-
-
-    const normalizeFiles = (
-      files?: Express.Multer.File[] | Express.Multer.File,
-    ): Express.Multer.File[] => {
-      if (!files) return [];
-      return Array.isArray(files) ? files : [files];
-    };
-
-    const isAudio = (file: Express.Multer.File) =>
-      file.mimetype.startsWith('audio/');
-
-    const isImage = (file: Express.Multer.File) =>
-      file.mimetype.startsWith('image/');
-
-    const createMediaItem = (
-      type: MediaType,
-      files?: Express.Multer.File[] | Express.Multer.File,
-    ) => {
-      const normalizedFiles = normalizeFiles(files);
-
-      const base = {
-        id: `${type}-${uuidv4()}`,
-        type,
-        title: body.title || normalizedFiles[0]?.originalname || 'Note',
-        description: body.description || '',
-        category,
-        tags: body.tags
-          ? body.tags.split(',').map((t: string) => t.trim())
-          : [],
-        creator: body.creator || '',
-        createdAt: new Date().toISOString(),
-      };
-
-      if (type === 'note') {
-        let audio: { type: string; url: string } | undefined;
-        let image: { type: string; url: string } | undefined;
-
-        for (const file of normalizedFiles) {
-          if (!audio && isAudio(file)) {
-            audio = {
-              type: 'audio',
-              url: `${baseUrl}/${file.filename}`,
-            };
-          }
-
-          if (!image && isImage(file)) {
-            image = {
-              type: 'image',
-              url: `${baseUrl}/${file.filename}`,
-            };
-          }
-        }
-
-        return {
-          ...base,
-          id: `note-${uuidv4()}`,
-          type: 'note',
-          text: body.text || '',
-          lat: body.lat ? String(body.lat) : '',
-          lng: body.lng ? String(body.lng) : '',
-          remind: body.remind === 'true',
-          audio,
-          image,
-          // schema-required but unused
-          url: body.url || undefined,
-        };
-      }
-
-      // 👇 Non-note media (1 file per item)
-      const file = normalizedFiles[0];
-
-      console.log(`before switch on type: ${type}`);
-
-      switch (type) {
-        case 'video':
-          console.log(`after switch on type: ${type}`);
-          return {
-            ...base,
-            id: `vid-${uuidv4()}`,
-            type: 'video',
-            url: `${baseUrl}/${file.filename}`,
-            duration: 0,
-          };
-
-        case 'image':
-          return {
-            ...base,
-            id: `img-${uuidv4()}`,
-            type: 'image',
-            url: `${baseUrl}/${file.filename}`,
-          };
-
-        case 'audio':
-          return {
-            ...base,
-            id: `aud-${uuidv4()}`,
-            type: 'audio',
-            url: `${baseUrl}/${file.filename}`,
-            duration: 0,
-          };
-
-        case 'pdf':
-          return {
-            ...base,
-            id: `pdf-${uuidv4()}`,
-            type: 'pdf',
-            url: `${baseUrl}/${file.filename}`,
-            pageCount: 0,
-          };
-
-        default:
-          throw new HttpException(
-            `Unsupported media type: ${type}`,
-            HttpStatus.BAD_REQUEST,
-          );
-      }
-    };
-
-    if (!person) {
-      throw new HttpException('Person not found', HttpStatus.NOT_FOUND);
-    }
-
-    if (!person.THINGS) person.THINGS = [];
-
-    let thing = person.THINGS.find(t => t.val === category);
-    if (!thing) {
-      thing = {
-        key: person.THINGS.length,
-        val: category,
-        childItems: [],
-      };
-      person.THINGS.push(thing);
-    }
-
-    let child = thing.childItems.find(c => c.val === 'Things');
-    if (!child) {
-      child = {
-        key: thing.childItems.length,
-        val: 'Things',
-        data: [],
-      };
-      thing.childItems.push(child);
-    }
-
-    const createdItems =
-      mediaType === 'note'
-        ? [createMediaItem('note', files)]
-        : normalizeFiles(files).map(file =>
-          createMediaItem(mediaType, file),
-        );
-
-    console.log(`createdItems : ${JSON.stringify(createdItems)}`);
-
-    child.data.push(...createdItems);
-
-    person.markModified('THINGS');
-    await person.save();
-
-    return {
-      success: true,
-      count: createdItems.length,
-      [mediaType]: createdItems,
-    };
+async uploadMultipleMediaForPerson(
+  personId: string,
+  files: Express.Multer.File[] | undefined,
+  category: string,
+  mediaType: MediaType,
+  body: any,
+) {
+  if (!mediaType) {
+    throw new HttpException('x-mediatype header is required', HttpStatus.BAD_REQUEST);
   }
+
+  if (!category) {
+    throw new HttpException('x-category header is required', HttpStatus.BAD_REQUEST);
+  }
+
+  const person = await this.personModel.findById(personId);
+  if (!person) throw new NotFoundException('Person not found');
+
+  const createMediaItem = (): any => {
+    const base = {
+      id: `${mediaType}-${uuidv4()}`,
+      type: mediaType,
+      title: body.title || '',
+      description: body.description || '',
+      category,
+      tags: body.tags ? body.tags.split(',').map((t: string) => t.trim()) : [],
+      creator: body.creator || '',
+      createdAt: new Date().toISOString(),
+    };
+
+    // Notes (text + optional media)
+    if (mediaType === 'note') {
+      return {
+        ...base,
+        text: body.text || '',
+        image: body.image || undefined,
+        audio: body.audio || undefined,
+        url: body.url || undefined,
+      };
+    }
+
+    // All other media types
+    return {
+      ...base,
+      url: body.url || undefined,
+      duration: body.duration ?? 0,
+    };
+  };
+
+  if (!person.THINGS) person.THINGS = [];
+
+  let thing = person.THINGS.find(t => t.val === category);
+  if (!thing) {
+    thing = { key: person.THINGS.length, val: category, childItems: [] };
+    person.THINGS.push(thing);
+  }
+
+  let child = thing.childItems.find(c => c.val === 'Things');
+  if (!child) {
+    child = { key: thing.childItems.length, val: 'Things', data: [] };
+    thing.childItems.push(child);
+  }
+
+  const createdItem = createMediaItem();
+  child.data.push(createdItem);
+
+  person.markModified('THINGS');
+  await person.save();
+
+  return {
+    success: true,
+    item: createdItem,
+  };
+}
+
   
+async getPersonsWithSignedMedia(): Promise<Person[]> {
+  const persons = await this.personModel.find().lean();
+
+  for (const person of persons) {
+    await this.attachSignedUrls(person);
+  }
+
+  return persons;
+}
+
+
+private async attachSignedUrls(person: any) {
+  if (!person?.THINGS?.length) return;
+
+  for (const thing of person.THINGS) {
+    for (const child of thing.childItems || []) {
+      for (const item of child.data || []) {
+        await this.processItemMedia(item);
+      }
+    }
+  }
+}
+
+private async processItemMedia(item: any) {
+  // Direct media
+  if (item.type === 'audio') {
+    item.url = await this.signIfExists(item.url, "audio");
+  }
+
+  if (item.type === 'video') {
+    item.url = await this.signIfExists(item.url,"video");
+  }
+
+  // Notes with embedded media
+  if (item.image?.url) {
+    item.image.url = await this.signIfExists(item.image.url, "image");
+  }
+
+  if (item.audio?.url) {
+    item.audio.url = await this.signIfExists(item.audio.url, "audio");
+  }
+}
+
+private async signIfExists(path?: string, media?: string): Promise<string | null> {
+  if (!path) return null;
+
+  // Already signed or external
+  if (path.startsWith('http')) return path;
+
+  const bucket = 'media'; // single unified bucket
+
+  const { data, error } = await this.supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, 60 * 60 * 24); // 24h
+
+  if (error) {
+    console.error(`Supabase ${media} signing error:`, error.message);
+    return null;
+  }
+
+  return data.signedUrl;
+}
+
 }

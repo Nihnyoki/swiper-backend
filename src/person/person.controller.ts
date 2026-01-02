@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from 'uuid'; // for unique video IDs
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { StoredMedia } from './interfaces/stored-media.interface';
+import { signMediaUrl } from './utils/signMediaUrl';
 
 @ApiTags('Persons')
 @Controller('api/persons')
@@ -119,17 +120,13 @@ export class PersonController {
     }
   }
 
-  @Get()
-  @ApiOperation({ summary: 'Get all persons' })
-  @ApiResponse({ status: 200, description: 'List of persons' })
-  @ApiResponse({ status: 500, description: 'Failed to fetch persons' })
-  async getPersons(): Promise<Person[]> {
-    try {
-      return await this.personModel.find().exec();
-    } catch {
-      throw new HttpException('Failed to fetch persons', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
+@Get()
+@ApiOperation({ summary: 'Get all persons' })
+@ApiResponse({ status: 200, description: 'List of persons' })
+@ApiResponse({ status: 500, description: 'Failed to fetch persons' })
+async getPersons(): Promise<Person[]> {
+  return this.personService.getPersonsWithSignedMedia();
+}
 
   @Get('children/:parentId')
   @ApiOperation({ summary: 'Get children by parent ID' })
@@ -172,7 +169,8 @@ export class PersonController {
   @ApiResponse({ status: 500, description: 'Failed to fetch persons' })
   async getPersonsComplete(): Promise<Person[]> {
     try {
-        return this.personService.getPersonComplete();
+        //return this.personService.getPersonComplete();
+        return this.personService.getPersonsWithSignedMedia();
     } catch {
       throw new HttpException('Failed to fetch persons', HttpStatus.INTERNAL_SERVER_ERROR);
     }
