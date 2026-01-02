@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { PersonModule } from './person/person.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -13,7 +14,10 @@ import { join } from 'path';
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),  // serve entire public folder at '/'
       serveRoot: '/',                             // serve at root URL, so images are at /images/alice.jpg
-    }),    
+    }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
   ],
 })
 export class AppModule {}
