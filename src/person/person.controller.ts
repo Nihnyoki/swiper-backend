@@ -16,6 +16,9 @@ import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { StoredMedia } from './interfaces/stored-media.interface';
 import { signMediaUrl } from './utils/signMediaUrl';
+import type { Multer } from 'multer';
+
+
 
 @ApiTags('Persons')
 @Controller('api/persons')
