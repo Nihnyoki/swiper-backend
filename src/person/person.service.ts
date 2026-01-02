@@ -7,6 +7,8 @@ import { existsSync, mkdirSync, renameSync } from 'fs';
 import { join } from 'path';
 import { StoredMedia } from './interfaces/stored-media.interface';
 import { supabase } from './common/supabase';
+import type { Multer } from 'multer';
+
 
 type MediaType = 'video' | 'image' | 'audio' | 'pdf' | 'note';
 
