@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    
     "module": "commonjs",
     "moduleResolution": "node",
     "esModuleInterop": true,
@@ -20,7 +21,8 @@
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "types": ["node", "express"]
   },
   "include": ["src/**/*", "public/IMAGETHS/models"]
 }
