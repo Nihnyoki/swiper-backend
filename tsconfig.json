@@ -22,7 +22,7 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "types": ["node", "express"]
+    "types": ["node"]
   },
   "include": ["src/**/*", "public/IMAGETHS/models"]
 }
