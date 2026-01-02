@@ -14,8 +14,14 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api-docs', app, document);
 
-  app.enableCors({ origin: 'http://localhost:5173',
-    credentials: true,});
+  app.enableCors({ 
+   origin: [
+      'https://swiper-cards.up.railway.app',
+      'http://localhost:5173'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials: true,
+  });
 
   const port = process.env.PORT || 10000;
   await app.listen(port, '0.0.0.0');
