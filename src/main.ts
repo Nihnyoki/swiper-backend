@@ -17,15 +17,15 @@ async function bootstrap() {
   app.enableCors({ 
    origin: [
       'https://swiper-cards.up.railway.app/',
-      'http://localhost:5173'
+      'https://swiper-cards.up.railway.app',
+      'swiper-cards.up.railway.app'
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: false,
+    allowedHeaders: ['Content-Type', 'Authorization','Access-Control-Allow-Origin'],
+    credentials: true,
   });
 
   const port = process.env.PORT || 10000;
   await app.listen(port, '0.0.0.0');
-  //await app.listen(3000);
 }
 bootstrap();
