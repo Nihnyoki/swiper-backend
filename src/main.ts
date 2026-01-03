@@ -14,6 +14,16 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api-docs', app, document);
 
+  app.use((req, res, next) => {
+    console.log('➡️ Incoming request:', {
+      method: req.method,
+      url: req.url,
+      origin: req.headers.origin,
+      host: req.headers.host,
+    });
+    next();
+  });
+
   app.enableCors({ 
    origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
