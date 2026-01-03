@@ -340,4 +340,12 @@ private async signIfExists(path?: string, media?: string): Promise<string | null
   return data.signedUrl;
 }
 
+  async testDBConnection() {
+    const person = await this.personModel.findOne().lean();
+    if (!person) {
+      throw new NotFoundException('Person not found');
+    }
+    console.log(`Person found: : ${JSON.stringify(person)}`);
+    }
+
 }

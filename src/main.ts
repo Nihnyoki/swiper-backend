@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { NotFoundException } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -35,8 +36,18 @@ async function bootstrap() {
   next();
 });
 
-  const port = process.env.PORT || 10000;
+  const port = process.env.PORT || 3000;
   console.log('🚀 Listening on port:', port);
+  await testDBConnection();
   await app.listen(port, '0.0.0.0');
 }
 bootstrap();
+
+async function testDBConnection() {
+     const person = await this.personModel.findOne().lean();
+      if (!person) {
+        throw new NotFoundException('Person not found');
+      }
+      console.log(`Person found: : ${JSON.stringify(person)}`);
+}
+
