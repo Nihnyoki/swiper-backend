@@ -29,6 +29,14 @@ async function bootstrap() {
        origin: true
   });
 
+/*  async function testDBConnection() {
+     const person = await this.personModel.findOne().lean();
+      if (!person) {
+        throw new NotFoundException('Person not found');
+      }
+      console.log(`Person found: : ${JSON.stringify(person)}`);
+}*/
+
   app.use((req, res, next) => {
   res.on('finish', () => {
     console.log('⬅️ Response headers:', res.getHeaders());
@@ -38,17 +46,11 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   console.log('🚀 Listening on port:', port);
-  await testDBConnection();
+  //await testDBConnection();
   await app.listen(port, '0.0.0.0');
 
 
-async function testDBConnection() {
-     const person = await this.personModel.findOne().lean();
-      if (!person) {
-        throw new NotFoundException('Person not found');
-      }
-      console.log(`Person found: : ${JSON.stringify(person)}`);
-}
+
 
 
 }
