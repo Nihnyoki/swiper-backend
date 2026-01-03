@@ -18,7 +18,16 @@ import { StoredMedia } from './interfaces/stored-media.interface';
 import { signMediaUrl } from './utils/signMediaUrl';
 import type { Multer } from 'multer';
 
-
+@Controller()
+export class HealthController {
+  @Get('/health')
+  health() {
+    return {
+      status: 'ok',
+      time: new Date().toISOString(),
+    };
+  }
+}
 
 @ApiTags('Persons')
 @Controller('api/persons')
