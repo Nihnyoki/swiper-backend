@@ -25,12 +25,18 @@ async function bootstrap() {
   });
 
   app.enableCors({ 
-   origin: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+       origin: true
   });
 
+  app.use((req, res, next) => {
+  res.on('finish', () => {
+    console.log('⬅️ Response headers:', res.getHeaders());
+  });
+  next();
+});
+
   const port = process.env.PORT || 10000;
+  console.log('🚀 Listening on port:', port);
   await app.listen(port, '0.0.0.0');
 }
 bootstrap();
