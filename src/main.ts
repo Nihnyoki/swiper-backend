@@ -40,8 +40,7 @@ async function bootstrap() {
   console.log('🚀 Listening on port:', port);
   await testDBConnection();
   await app.listen(port, '0.0.0.0');
-}
-bootstrap();
+
 
 async function testDBConnection() {
      const person = await this.personModel.findOne().lean();
@@ -50,4 +49,8 @@ async function testDBConnection() {
       }
       console.log(`Person found: : ${JSON.stringify(person)}`);
 }
+
+
+}
+bootstrap();
 
