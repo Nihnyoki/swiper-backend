@@ -55,7 +55,6 @@ export class PersonController {
   @ApiParam({ name: 'personId', required: true })
   async uploadMedia(
     @Param('personId') personId: string,
-    @UploadedFiles() files: Express.Multer.File[],
     @Headers('x-category') category: string,
     @Headers('x-mediatype')
     mediaType:
@@ -65,18 +64,19 @@ export class PersonController {
       | 'pdf'
       | 'note',
     @Body() body: any,
+    @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    await this.personService.handleMediaUpload(
+    /*await this.personService.handleMediaUpload(
       personId,
       mediaType,
       files,
-    );
+    );*/
     return this.personService.uploadMultipleMediaForPerson(
       personId,
-      files,
       category,
       mediaType,
       body,
+      files,
     );
   }
 
