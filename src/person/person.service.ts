@@ -226,6 +226,7 @@ async uploadMultipleMediaForPerson(
       title: body.title || '',
       description: body.description || '',
       category,
+      url: body.url || undefined,
       tags: body.tags ? body.tags.split(',').map((t: string) => t.trim()) : [],
       creator: body.creator || '',
       createdAt: new Date().toISOString(),
