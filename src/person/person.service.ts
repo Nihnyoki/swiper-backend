@@ -203,10 +203,10 @@ export class PersonService {
 
 async uploadMultipleMediaForPerson(
   personId: string,
-  files: Express.Multer.File[] | undefined,
   category: string,
   mediaType: MediaType,
   body: any,
+  files?: Express.Multer.File[] | undefined,
 ) {
   if (!mediaType) {
     throw new HttpException('x-mediatype header is required', HttpStatus.BAD_REQUEST);
