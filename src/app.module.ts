@@ -8,7 +8,7 @@ import { join } from 'path';
 @Module({
   imports: [
     //MongooseModule.forRoot(process.env.AXCEM_CONNECTION_STRING || 'mongodb://localhost/axcemengine', {}),
-    MongooseModule.forRoot(process.env.AXCEM_CONNECTION_STRING || 'mongodb+srv://nih:9Drowssap0@swiper-1.36xhezp.mongodb.net/?appName=swiper-1', {}),
+    MongooseModule.forRoot(process.env.AXCEM_CONNECTION_STRING || '', {}),
     PersonModule,
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),  // serve entire public folder at '/'
