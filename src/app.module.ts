@@ -9,7 +9,7 @@ import { ConfigModule } from '@nestjs/config';
 @Module({
   imports: [
     //MongooseModule.forRoot(process.env.AXCEM_CONNECTION_STRING || 'mongodb://localhost/axcemengine', {}),
-    MongooseModule.forRoot(process.env.MONGO_URI || 'mongodb+srv://nih:9Drowssap0@swiper-1.36xhezp.mongodb.net/?appName=swiper-1',{
+    MongooseModule.forRoot(process.env.MONGO_URI || '',{
   serverSelectionTimeoutMS: 15000,
   socketTimeoutMS: 15000,
 }),
