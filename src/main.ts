@@ -49,10 +49,6 @@ async function bootstrap() {
   //await testDBConnection();
   await app.listen(port, '0.0.0.0');
 
-
-
-
-
 }
 bootstrap();
 
