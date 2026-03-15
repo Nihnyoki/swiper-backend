@@ -289,6 +289,33 @@ async getPersonsWithSignedMedia(): Promise<Person[]> {
 }
 
 
+async getRandomPeopleWithSignedMedia(limit: number): Promise<Person[]> {
+  const people = await this.personModel.aggregate([{ $sample: { size: limit } }]);
+
+  for (const person of people) {
+    await this.attachSignedUrls(person);
+  }
+
+  return people;
+}
+
+
+async getPaginatedPeopleWithSignedMedia(
+  page: number,
+  limit: number
+): Promise<{ data: Person[]; total: number; page: number; limit: number }> {
+  const skip = (page - 1) * limit;
+  const total = await this.personModel.countDocuments();
+  const people = await this.personModel.find().skip(skip).limit(limit).lean();
+
+  for (const person of people) {
+    await this.attachSignedUrls(person);
+  }
+
+  return { data: people, total, page, limit };
+}
+
+
 private async attachSignedUrls(person: any) {
   if (!person?.THINGS?.length) return;
 

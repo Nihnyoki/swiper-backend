@@ -1,6 +1,6 @@
 // src/person/person.controller.ts
 // src/person/person.controller.ts
-import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UploadedFiles, UseInterceptors, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UploadedFiles, UseInterceptors, HttpException, HttpStatus, Query } from '@nestjs/common';
 import { Express } from "express";
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { InjectModel } from '@nestjs/mongoose';
@@ -223,5 +223,24 @@ async getPersons(): Promise<Person[]> {
   async getPersonWithChildren(@Param("id") id: string) {
     console.log(`GAKHIGIMONETH: ${id}`);
     return this.personService.getPersonWithFamily(id);
+  }
+
+  @Get('random-people')
+  @ApiOperation({ summary: 'Get a random list of people' })
+  @ApiResponse({ status: 200, description: 'Random list of people' })
+  @ApiResponse({ status: 500, description: 'Failed to fetch random people' })
+  async getRandomPeople(@Query('limit') limit: number): Promise<Person[]> {
+    return this.personService.getRandomPeopleWithSignedMedia(limit);
+  }
+
+  @Get('paginated-people')
+  @ApiOperation({ summary: 'Get paginated list of people' })
+  @ApiResponse({ status: 200, description: 'Paginated list of people' })
+  @ApiResponse({ status: 500, description: 'Failed to fetch paginated people' })
+  async getPaginatedPeople(
+    @Query('page') page: number,
+    @Query('limit') limit: number
+  ): Promise<{ data: Person[]; total: number; page: number; limit: number }> {
+    return this.personService.getPaginatedPeopleWithSignedMedia(page, limit);
   }
 }
