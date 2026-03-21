@@ -243,4 +243,22 @@ async getPersons(): Promise<Person[]> {
   ): Promise<{ data: Person[]; total: number; page: number; limit: number }> {
     return this.personService.getPaginatedPeopleWithSignedMedia(page, limit);
   }
+
+  @Post('delete-media/:personId')
+  @ApiOperation({ summary: 'Delete media for a person' })
+  @ApiParam({ name: 'personId', required: true, description: 'The ID of the person' })
+  @ApiResponse({ status: 200, description: 'Media deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Person or media not found' })
+  @ApiResponse({ status: 500, description: 'Failed to delete media' })
+  async deleteMedia(
+    @Param('personId') personId: string,
+    @Body('mediaName') mediaName: string,
+  ): Promise<{ message: string }> {
+    try {
+      await this.personService.deleteMedia(personId, mediaName);
+      return { message: 'Media deleted successfully' };
+    } catch (error) {
+      throw new HttpException(error.message, error.status || HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
 }
