@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { Person, PersonDocument } from './schemas/person.schema';
-import { existsSync, mkdirSync, renameSync } from 'fs';
+import { existsSync, mkdirSync, renameSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { StoredMedia } from './interfaces/stored-media.interface';
 import { supabase } from './common/supabase';
@@ -376,4 +376,21 @@ private async signIfExists(path?: string, media?: string): Promise<string | null
     console.log(`Person found: : ${JSON.stringify(person)}`);
     }
 
+    async deleteMedia(personId: string, mediaName: string): Promise<void> {
+      const person = await this.personModel.findById(personId);
+      if (!person) {
+        throw new NotFoundException('Person not found');
+      }
+
+      const mediaPath = join('./public', mediaName);
+      if (!existsSync(mediaPath)) {
+        throw new NotFoundException('Media not found');
+      }
+
+      try {
+        unlinkSync(mediaPath);
+      } catch (error) {
+        throw new HttpException('Failed to delete media', HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+    }
 }
