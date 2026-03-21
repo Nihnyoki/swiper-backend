@@ -1,5 +1,6 @@
 
 ./mongod --dbpath ../../../data
+rm -rf tsconfig.tsbuildinfo
 npx tsc --project tsconfig.json
 npx node dist/main.js
 ps aux | grep mongod
