@@ -24,5 +24,5 @@
     "noFallthroughCasesInSwitch": false,
     "types": ["node","express"]
   },
-  "include": ["src/**/*", "public/IMAGETHS/models"]
+  "include": ["src/**/*"]
 }
