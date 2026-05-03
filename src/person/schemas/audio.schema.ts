@@ -1,9 +1,10 @@
 // src/person/schemas/audio.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { MediaBase } from './media.schema';
 
 @Schema({ _id: false }) // embedded sub-document
-export class Audio {
+export class Audio extends MediaBase {
   @Prop({ required: true })
   id: string;
 
