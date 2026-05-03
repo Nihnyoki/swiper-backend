@@ -1,8 +1,8 @@
 // src/person/person.controller.ts
 // src/person/person.controller.ts
-import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UseInterceptors, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UploadedFiles, UseInterceptors, HttpException, HttpStatus, Query } from '@nestjs/common';
 import { Express } from "express";
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Person, PersonDocument } from './schemas/person.schema';
@@ -14,83 +14,71 @@ import { PersonService } from './person.service';
 import { v4 as uuidv4 } from 'uuid'; // for unique video IDs
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { StoredMedia } from './interfaces/stored-media.interface';
+import { signMediaUrl } from './utils/signMediaUrl';
+import type { Multer } from 'multer';
+
+@Controller()
+export class HealthController {
+  @Get('/health')
+  health() {
+    return {
+      status: 'ok',
+      time: new Date().toISOString(),
+    };
+  }
+}
 
 @ApiTags('Persons')
 @Controller('api/persons')
 export class PersonController {
   constructor(@InjectModel(Person.name) private readonly personModel: Model<PersonDocument>, private readonly personService: PersonService) {}
 
-@Post('media/:personId')
-@UseInterceptors(
-  FileInterceptor('file', {
-    storage: diskStorage({
-      destination: (req, file, cb) => {
-        // ⚠️ Headers are always lowercased
-        const mediaType = req.headers['x-mediatype'] as
-          | 'video'
-          | 'image'
-          | 'audio'
-          | 'pdf';
-
-        const basePath = './public';
-
-        const mediaFolders: Record<string, string> = {
-          video: 'videos',
-          image: 'images',
-          audio: 'audios',
-          pdf: 'pdfs',
-        };
-
-        const folder = mediaFolders[mediaType];
-
-        if (!folder) {
-          return cb(
-            new Error(`Unsupported media type: ${mediaType}`),
-            '',
-          );
-        }
-
-        const uploadPath = join(basePath, folder);
-
-        if (!existsSync(uploadPath)) {
-          mkdirSync(uploadPath, { recursive: true });
-        }
-
-        cb(null, uploadPath);
-      },
-
-      filename: (req, file, cb) => {
-        const uniqueSuffix =
-          Date.now() + '-' + Math.round(Math.random() * 1e9);
-
-        cb(
-          null,
-          `MEDIA-${uniqueSuffix}${extname(file.originalname)}`,
-        );
-      },
+  // person.controller.ts
+  @Post('media/:personId')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: diskStorage({
+        destination: './public/tmp', // temporary, service will move files
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, `MEDIA-${uniqueSuffix}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 100 * 1024 * 1024 },
     }),
-    limits: { fileSize: 100 * 1024 * 1024 },
-  }),
-)
-@ApiOperation({ summary: 'Upload a new media file for a person' })
-@ApiConsumes('multipart/form-data')
-@ApiParam({ name: 'personId', required: true })
-async uploadMedia(
-  @Param('personId') personId: string,
-  @UploadedFile() file: Express.Multer.File,
-  @Headers('x-category') category: string,
-  @Headers('x-mediatype') mediaType: 'video' | 'image' | 'audio' | 'pdf',
-  @Body() body: any,
-) {
-  return this.personService.uploadMediaForPerson(
-    personId,
-    file,
-    category,
-    mediaType,
-    body,
-  );
-}
+  )
 
+  @ApiOperation({ summary: 'Upload multiple media files for a person' })
+  @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'personId', required: true })
+  async uploadMedia(
+    @Param('personId') personId: string,
+    @Headers('x-category') category: string,
+    @Headers('x-mediatype')
+    mediaType:
+      | 'video'
+      | 'image'
+      | 'audio'
+      | 'pdf'
+      | 'note',
+    @Body() body: any,
+    @UploadedFiles() files?: Express.Multer.File[],
+  ) {
+    /*await this.personService.handleMediaUpload(
+      personId,
+      mediaType,
+      files,
+    );*/
+    return this.personService.uploadMultipleMediaForPerson(
+      personId,
+      category,
+      mediaType,
+      body,
+      files,
+    );
+  }
 
   @Post()
   @UseInterceptors(
@@ -144,17 +132,13 @@ async uploadMedia(
     }
   }
 
-  @Get()
-  @ApiOperation({ summary: 'Get all persons' })
-  @ApiResponse({ status: 200, description: 'List of persons' })
-  @ApiResponse({ status: 500, description: 'Failed to fetch persons' })
-  async getPersons(): Promise<Person[]> {
-    try {
-      return await this.personModel.find().exec();
-    } catch {
-      throw new HttpException('Failed to fetch persons', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
+@Get()
+@ApiOperation({ summary: 'Get all persons' })
+@ApiResponse({ status: 200, description: 'List of persons' })
+@ApiResponse({ status: 500, description: 'Failed to fetch persons' })
+async getPersons(): Promise<Person[]> {
+  return this.personService.getPersonsWithSignedMedia();
+}
 
   @Get('children/:parentId')
   @ApiOperation({ summary: 'Get children by parent ID' })
@@ -197,7 +181,8 @@ async uploadMedia(
   @ApiResponse({ status: 500, description: 'Failed to fetch persons' })
   async getPersonsComplete(): Promise<Person[]> {
     try {
-        return this.personService.getPersonComplete();
+        //return this.personService.getPersonComplete();
+        return this.personService.getPersonsWithSignedMedia();
     } catch {
       throw new HttpException('Failed to fetch persons', HttpStatus.INTERNAL_SERVER_ERROR);
     }
@@ -238,5 +223,55 @@ async uploadMedia(
   async getPersonWithChildren(@Param("id") id: string) {
     console.log(`GAKHIGIMONETH: ${id}`);
     return this.personService.getPersonWithFamily(id);
+  }
+
+  @Get('random-people')
+  @ApiOperation({ summary: 'Get a random list of people' })
+  @ApiResponse({ status: 200, description: 'Random list of people' })
+  @ApiResponse({ status: 500, description: 'Failed to fetch random people' })
+  async getRandomPeople(@Query('limit') limit: number): Promise<Person[]> {
+    return this.personService.getRandomPeopleWithSignedMedia(limit);
+  }
+
+  @Get('paginated-people')
+  @ApiOperation({ summary: 'Get paginated list of people' })
+  @ApiResponse({ status: 200, description: 'Paginated list of people' })
+  @ApiResponse({ status: 500, description: 'Failed to fetch paginated people' })
+  async getPaginatedPeople(
+    @Query('page') page: number,
+    @Query('limit') limit: number
+  ): Promise<{ data: Person[]; total: number; page: number; limit: number }> {
+    return this.personService.getPaginatedPeopleWithSignedMedia(page, limit);
+  }
+
+  @Post('delete-media/:personId')
+  @ApiOperation({ summary: 'Delete media for a person' })
+  @ApiParam({ name: 'personId', required: true, description: 'The ID of the person' })
+  @ApiResponse({ status: 200, description: 'Media deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Person or media not found' })
+  @ApiResponse({ status: 500, description: 'Failed to delete media' })
+  async deleteMedia(
+    @Param('personId') personId: string,
+    @Body('mediaName') mediaName: string,
+  ): Promise<{ message: string }> {
+    try {
+      await this.personService.deleteMedia(personId, mediaName);
+      return { message: 'Media deleted successfully' };
+    } catch (error) {
+      throw new HttpException(error.message, error.status || HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get('lazy-load-children')
+  @ApiOperation({ summary: 'Lazy load additional childItems for a category' })
+  @ApiResponse({ status: 200, description: 'Child items retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Category not found' })
+  @ApiResponse({ status: 500, description: 'Failed to retrieve child items' })
+  async lazyLoadChildren(
+    @Query('categoryId') categoryId: string,
+    @Query('offset') offset: number,
+    @Query('limit') limit: number,
+  ): Promise<any> {
+    return this.personService.lazyLoadChildren(categoryId, offset, limit);
   }
 }
