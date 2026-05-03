@@ -261,4 +261,17 @@ async getPersons(): Promise<Person[]> {
       throw new HttpException(error.message, error.status || HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
+  @Get('lazy-load-children')
+  @ApiOperation({ summary: 'Lazy load additional childItems for a category' })
+  @ApiResponse({ status: 200, description: 'Child items retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Category not found' })
+  @ApiResponse({ status: 500, description: 'Failed to retrieve child items' })
+  async lazyLoadChildren(
+    @Query('categoryId') categoryId: string,
+    @Query('offset') offset: number,
+    @Query('limit') limit: number,
+  ): Promise<any> {
+    return this.personService.lazyLoadChildren(categoryId, offset, limit);
+  }
 }

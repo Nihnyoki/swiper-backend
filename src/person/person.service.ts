@@ -306,9 +306,18 @@ async getPaginatedPeopleWithSignedMedia(
 ): Promise<{ data: Person[]; total: number; page: number; limit: number }> {
   const skip = (page - 1) * limit;
   const total = await this.personModel.countDocuments();
-  const people = await this.personModel.find().skip(skip).limit(limit).lean();
+  const people = await this.personModel
+    .find()
+    .skip(skip)
+    .limit(limit)
+    .lean();
 
   for (const person of people) {
+    if (person.THINGS) {
+      for (const thing of person.THINGS) {
+        thing.childItems = thing.childItems?.slice(0, 3) || [];
+      }
+    }
     await this.attachSignedUrls(person);
   }
 
@@ -392,5 +401,22 @@ private async signIfExists(path?: string, media?: string): Promise<string | null
       } catch (error) {
         throw new HttpException('Failed to delete media', HttpStatus.INTERNAL_SERVER_ERROR);
       }
+    }
+
+    async lazyLoadChildren(categoryId: string, offset: number, limit: number): Promise<any> {
+      const category = await this.personModel.findOne({ 'THINGS.val': categoryId });
+      if (!category) {
+        throw new NotFoundException('Category not found');
+      }
+  
+      const thing = category.THINGS?.find((t: any) => t.val === categoryId);
+      if (!thing) {
+        throw new NotFoundException('Category not found');
+      }
+  
+      const childItems = thing.childItems || [];
+      const slicedItems = childItems.slice(offset, offset + limit);
+  
+      return { categoryId, offset, limit, data: slicedItems };
     }
 }
