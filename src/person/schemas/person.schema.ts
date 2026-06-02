@@ -56,4 +56,8 @@ export class Person {
 
 export const PersonSchema = SchemaFactory.createForClass(Person);
 
+PersonSchema.index({ 'THINGS.val': 1 });
+PersonSchema.index({ 'THINGS.childItems.val': 1 });
+PersonSchema.index({ 'THINGS.childItems.data.type': 1 });
+
 

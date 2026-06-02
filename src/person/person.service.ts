@@ -28,6 +28,10 @@ export class PersonService {
     note: 'notes',
   };
 
+  private readonly musicCategory = 'MUSIC';
+  private readonly personalCategory = 'PERSONAL';
+  private readonly musicChildItem = 'Tracks';
+
   async findPeople(): Promise<Person[]> {
     const people = await this.personModel.find();
     if (!people) return [];
@@ -216,6 +220,9 @@ async uploadMultipleMediaForPerson(
     throw new HttpException('x-category header is required', HttpStatus.BAD_REQUEST);
   }
 
+  const effectiveCategory = mediaType === 'audio' ? this.musicCategory : category;
+  const childCategory = effectiveCategory === this.musicCategory ? this.musicChildItem : 'Things';
+
   const person = await this.personModel.findById(personId);
   if (!person) throw new NotFoundException('Person not found');
 
@@ -225,14 +232,13 @@ async uploadMultipleMediaForPerson(
       type: mediaType,
       title: body.title || '',
       description: body.description || '',
-      category,
+      category: effectiveCategory,
       url: body.url || undefined,
       tags: body.tags ? body.tags.split(',').map((t: string) => t.trim()) : [],
       creator: body.creator || '',
       createdAt: new Date().toISOString(),
     };
 
-    // Notes (text + optional media)
     if (mediaType === 'note') {
       return {
         ...base,
@@ -243,7 +249,6 @@ async uploadMultipleMediaForPerson(
       };
     }
 
-    // All other media types
     return {
       ...base,
       url: body.url || undefined,
@@ -253,15 +258,15 @@ async uploadMultipleMediaForPerson(
 
   if (!person.THINGS) person.THINGS = [];
 
-  let thing = person.THINGS.find(t => t.val === category);
+  let thing = person.THINGS.find(t => t.val === effectiveCategory);
   if (!thing) {
-    thing = { key: person.THINGS.length, val: category, childItems: [] };
+    thing = { key: person.THINGS.length, val: effectiveCategory, childItems: [] };
     person.THINGS.push(thing);
   }
 
-  let child = thing.childItems.find(c => c.val === 'Things');
+  let child = thing.childItems.find(c => c.val === childCategory);
   if (!child) {
-    child = { key: thing.childItems.length, val: 'Things', data: [] };
+    child = { key: thing.childItems.length, val: childCategory, data: [] };
     thing.childItems.push(child);
   }
 
@@ -282,6 +287,7 @@ async getPersonsWithSignedMedia(): Promise<Person[]> {
   const persons = await this.personModel.find().lean();
 
   for (const person of persons) {
+    this.normalizeMusicCategoryResponse(person);
     await this.attachSignedUrls(person);
   }
 
@@ -293,6 +299,7 @@ async getRandomPeopleWithSignedMedia(limit: number): Promise<Person[]> {
   const people = await this.personModel.aggregate([{ $sample: { size: limit } }]);
 
   for (const person of people) {
+    this.normalizeMusicCategoryResponse(person);
     await this.attachSignedUrls(person);
   }
 
@@ -306,23 +313,118 @@ async getPaginatedPeopleWithSignedMedia(
 ): Promise<{ data: Person[]; total: number; page: number; limit: number }> {
   const skip = (page - 1) * limit;
   const total = await this.personModel.countDocuments();
-  const people = await this.personModel
-    .find()
-    .skip(skip)
-    .limit(limit)
-    .lean();
+
+  const pagePeople = await this.personModel.find().skip(skip).limit(limit);
+  await Promise.all(pagePeople.map(person => this.migrateAudioFromPersonalDoc(person)));
+
+  const people = await this.personModel.aggregate([
+    { $skip: skip },
+    { $limit: limit },
+    {
+      $addFields: {
+        THINGS: {
+          $map: {
+            input: { $ifNull: ['$THINGS', []] },
+            as: 'thing',
+            in: {
+              $mergeObjects: [
+                '$$thing',
+                { childItems: { $slice: ['$$thing.childItems', 3] } },
+              ],
+            },
+          },
+        },
+      },
+    },
+  ]);
 
   for (const person of people) {
-    if (person.THINGS) {
-      for (const thing of person.THINGS) {
-        thing.childItems = thing.childItems?.slice(0, 3) || [];
-      }
-    }
+    this.normalizeMusicCategoryResponse(person);
     await this.attachSignedUrls(person);
   }
 
-  return { data: people, total, page, limit };
+  return { data: people as Person[], total, page, limit };
 }
+
+  private normalizeMusicCategoryResponse(person: any): void {
+    if (!person?.THINGS?.length) return;
+
+    const personalThing = person.THINGS.find((thing: any) => thing.val === this.personalCategory);
+    if (!personalThing?.childItems?.length) return;
+
+    const audioItems: any[] = [];
+    for (const child of personalThing.childItems) {
+      if (!child?.data?.length) continue;
+      const remainingData: any[] = [];
+
+      for (const item of child.data) {
+        if (item?.type === 'audio') {
+          audioItems.push(item);
+        } else {
+          remainingData.push(item);
+        }
+      }
+
+      child.data = remainingData;
+    }
+
+    if (!audioItems.length) return;
+
+    let musicThing = person.THINGS.find((thing: any) => thing.val === this.musicCategory);
+    if (!musicThing) {
+      musicThing = { key: person.THINGS.length, val: this.musicCategory, childItems: [] };
+      person.THINGS.push(musicThing);
+    }
+
+    let tracksChild = musicThing.childItems.find((c: any) => c.val === this.musicChildItem);
+    if (!tracksChild) {
+      tracksChild = { key: musicThing.childItems.length, val: this.musicChildItem, data: [] };
+      musicThing.childItems.push(tracksChild);
+    }
+
+    tracksChild.data = [...(tracksChild.data || []), ...audioItems];
+  }
+
+  private async migrateAudioFromPersonalDoc(person: any): Promise<boolean> {
+    if (!person?.THINGS?.length) return false;
+
+    const personalThing = person.THINGS.find((thing: any) => thing.val === this.personalCategory);
+    if (!personalThing?.childItems?.length) return false;
+
+    const audioItems: any[] = [];
+    for (const child of personalThing.childItems) {
+      if (!child?.data?.length) continue;
+
+      const remainingData: any[] = [];
+      for (const item of child.data) {
+        if (item?.type === 'audio') {
+          audioItems.push(item);
+        } else {
+          remainingData.push(item);
+        }
+      }
+      child.data = remainingData;
+    }
+
+    if (!audioItems.length) return false;
+
+    let musicThing = person.THINGS.find((thing: any) => thing.val === this.musicCategory);
+    if (!musicThing) {
+      musicThing = { key: person.THINGS.length, val: this.musicCategory, childItems: [] };
+      person.THINGS.push(musicThing);
+    }
+
+    let tracksChild = musicThing.childItems.find((c: any) => c.val === this.musicChildItem);
+    if (!tracksChild) {
+      tracksChild = { key: musicThing.childItems.length, val: this.musicChildItem, data: [] };
+      musicThing.childItems.push(tracksChild);
+    }
+
+    tracksChild.data = [...(tracksChild.data || []), ...audioItems];
+    person.markModified?.('THINGS');
+    await person.save();
+    return true;
+  }
 
 
 private async attachSignedUrls(person: any) {
@@ -403,20 +505,62 @@ private async signIfExists(path?: string, media?: string): Promise<string | null
       }
     }
 
-    async lazyLoadChildren(categoryId: string, offset: number, limit: number): Promise<any> {
-      const category = await this.personModel.findOne({ 'THINGS.val': categoryId });
-      if (!category) {
+    async lazyLoadChildren(categoryId: string, offset = 0, limit = 10): Promise<any> {
+      const sliceSize = limit;
+      const start = Math.max(offset, 0);
+
+      if (categoryId === this.musicCategory) {
+        const personalPerson = await this.personModel.findOne({
+          'THINGS.val': this.personalCategory,
+          'THINGS.childItems.data.type': 'audio',
+        });
+
+        if (personalPerson) {
+          await this.migrateAudioFromPersonalDoc(personalPerson);
+        }
+      }
+
+      const results = await this.personModel.aggregate([
+        { $match: { 'THINGS.val': categoryId } },
+        {
+          $project: {
+            THINGS: {
+              $filter: {
+                input: { $ifNull: ['$THINGS', []] },
+                as: 'thing',
+                cond: { $eq: ['$$thing.val', categoryId] },
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            THINGS: {
+              $map: {
+                input: '$THINGS',
+                as: 'thing',
+                in: {
+                  $mergeObjects: [
+                    '$$thing',
+                    {
+                      childItems: {
+                        $slice: ['$$thing.childItems', start, sliceSize],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ]);
+
+      const result = results[0];
+      if (!result || !result.THINGS?.length) {
         throw new NotFoundException('Category not found');
       }
-  
-      const thing = category.THINGS?.find((t: any) => t.val === categoryId);
-      if (!thing) {
-        throw new NotFoundException('Category not found');
-      }
-  
-      const childItems = thing.childItems || [];
-      const slicedItems = childItems.slice(offset, offset + limit);
-  
-      return { categoryId, offset, limit, data: slicedItems };
+
+      const thing = result.THINGS[0];
+      return { categoryId, offset: start, limit: sliceSize, data: thing.childItems || [] };
     }
 }

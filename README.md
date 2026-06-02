@@ -31,6 +31,36 @@
 $ npm install
 ```
 
+## MUSIC category payload format
+
+Audio assets are now stored under a top-level `MUSIC` category in the person's `THINGS` array.
+
+Example structure:
+
+```json
+{
+  "val": "MUSIC",
+  "childItems": [
+    {
+      "val": "Tracks",
+      "data": [
+        {
+          "id": "audio-...",
+          "type": "audio",
+          "category": "MUSIC",
+          "url": "...",
+          "title": "..."
+        }
+      ]
+    }
+  ]
+}
+```
+
+Non-audio personal uploads are still stored under the `PERSONAL` category.
+
+Audio uploads should use the `x-category: MUSIC` header when calling `/api/persons/media/:personId`.
+
 ## Compile and run the project
 
 ```bash
