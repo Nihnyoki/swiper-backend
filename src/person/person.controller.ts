@@ -1,6 +1,6 @@
 // src/person/person.controller.ts
 // src/person/person.controller.ts
-import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UploadedFiles, UseInterceptors, HttpException, HttpStatus, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UploadedFiles, UseInterceptors, HttpException, HttpStatus, Query, ParseIntPipe } from '@nestjs/common';
 import { Express } from "express";
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { InjectModel } from '@nestjs/mongoose';
@@ -8,7 +8,7 @@ import { Model } from 'mongoose';
 import { Person, PersonDocument } from './schemas/person.schema';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { PersonDto } from './dto/person';
 import { PersonService } from './person.service';
 import { v4 as uuidv4 } from 'uuid'; // for unique video IDs
@@ -50,7 +50,7 @@ export class PersonController {
     }),
   )
 
-  @ApiOperation({ summary: 'Upload multiple media files for a person' })
+  @ApiOperation({ summary: 'Upload multiple media files for a person (audio uploads are stored under MUSIC)' })
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'personId', required: true })
   async uploadMedia(
@@ -234,12 +234,14 @@ async getPersons(): Promise<Person[]> {
   }
 
   @Get('paginated-people')
-  @ApiOperation({ summary: 'Get paginated list of people' })
+  @ApiOperation({ summary: 'Get paginated list of people with top 3 category childItems' })
+  @ApiQuery({ name: 'page', required: true, description: 'Page number', example: 1 })
+  @ApiQuery({ name: 'limit', required: true, description: 'Number of items per page', example: 10 })
   @ApiResponse({ status: 200, description: 'Paginated list of people' })
   @ApiResponse({ status: 500, description: 'Failed to fetch paginated people' })
   async getPaginatedPeople(
-    @Query('page') page: number,
-    @Query('limit') limit: number
+    @Query('page', ParseIntPipe) page: number,
+    @Query('limit', ParseIntPipe) limit: number
   ): Promise<{ data: Person[]; total: number; page: number; limit: number }> {
     return this.personService.getPaginatedPeopleWithSignedMedia(page, limit);
   }
@@ -264,13 +266,16 @@ async getPersons(): Promise<Person[]> {
 
   @Get('lazy-load-children')
   @ApiOperation({ summary: 'Lazy load additional childItems for a category' })
+  @ApiQuery({ name: 'categoryId', required: true, description: 'Category name to lazy load, e.g. MUSIC' })
+  @ApiQuery({ name: 'offset', required: true, description: 'Start index for child items', example: 0 })
+  @ApiQuery({ name: 'limit', required: true, description: 'Number of child items to return', example: 10 })
   @ApiResponse({ status: 200, description: 'Child items retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Category not found' })
   @ApiResponse({ status: 500, description: 'Failed to retrieve child items' })
   async lazyLoadChildren(
     @Query('categoryId') categoryId: string,
-    @Query('offset') offset: number,
-    @Query('limit') limit: number,
+    @Query('offset', ParseIntPipe) offset: number,
+    @Query('limit', ParseIntPipe) limit: number,
   ): Promise<any> {
     return this.personService.lazyLoadChildren(categoryId, offset, limit);
   }
