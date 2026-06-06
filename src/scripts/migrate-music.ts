@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { PersonSchema } from '../person/schemas/person.schema';
 import { migrateAudioFromPersonalDoc, ensureMusicStructure } from '../person/utils/musicHelpers';
+import { writeFileSync, mkdirSync, existsSync } from 'fs';
 
 dotenv.config();
 
@@ -17,6 +18,10 @@ async function run() {
   let skipped = 0;
   let failed = 0;
   let repairedDocs = 0;
+  const updatedIds: string[] = [];
+  const skippedIds: string[] = [];
+  const failedIds: string[] = [];
+  const repairedIds: string[] = [];
 
   const dryRun = !process.argv.includes('--apply');
   const doRepair = process.argv.includes('--repair') || true; // attempt repair by default
@@ -70,13 +75,32 @@ async function run() {
           await doc.save();
         }
         updated++;
+        updatedIds.push(String(doc._id));
       } else {
         skipped++;
+        skippedIds.push(String(doc._id));
       }
     } catch (e) {
       console.error('Failed for doc', doc._id, e);
       failed++;
+      failedIds.push(String(doc._id));
     }
+  }
+  // write CSV report
+  try {
+    const reportsDir = 'migrations';
+    if (!existsSync(reportsDir)) mkdirSync(reportsDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const csvPath = `${reportsDir}/music-migration-report-${ts}.csv`;
+    const lines: string[] = [];
+    lines.push('id,action,repaired');
+    for (const id of updatedIds) lines.push(`${id},updated,${repairedIds.includes(id) ? '1' : '0'}`);
+    for (const id of skippedIds) lines.push(`${id},skipped,0`);
+    for (const id of failedIds) lines.push(`${id},failed,0`);
+    writeFileSync(csvPath, lines.join('\n'));
+    console.log('Wrote report to', csvPath);
+  } catch (e) {
+    console.error('Failed to write report', e);
   }
 
   console.log('Migration complete. dryRun=', dryRun, 'updated=', updated, 'skipped=', skipped, 'failed=', failed, 'repairedDocs=', repairedDocs);
