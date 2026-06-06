@@ -16,18 +16,59 @@ async function run() {
   let updated = 0;
   let skipped = 0;
   let failed = 0;
+  let repairedDocs = 0;
+
+  const dryRun = !process.argv.includes('--apply');
+  const doRepair = process.argv.includes('--repair') || true; // attempt repair by default
 
   for await (const doc of cursor) {
     try {
       let modified = false;
+
+      // Ensure MUSIC structure
       const ensured = ensureMusicStructure(doc);
       modified = modified || ensured;
 
+      // Migrate audio entries from PERSONAL -> MUSIC in memory
       const migrated = migrateAudioFromPersonalDoc(doc);
       if (migrated.migrated) modified = true;
 
+      // Defensive repair: fix malformed THINGS/childItems structure if requested
+      if (doRepair && Array.isArray(doc.THINGS)) {
+        let repaired = false;
+        for (let i = 0; i < doc.THINGS.length; i++) {
+          const thing = doc.THINGS[i] as any;
+          if (thing == null || typeof thing !== 'object') {
+            doc.THINGS[i] = { key: i, val: 'UNKNOWN', childItems: [] };
+            repaired = true;
+            continue;
+          }
+          if (thing.key === undefined || thing.key === null) { thing.key = i; repaired = true; }
+          if (!thing.val) { thing.val = 'UNKNOWN'; repaired = true; }
+          if (!Array.isArray(thing.childItems)) { thing.childItems = []; repaired = true; }
+
+          for (let j = 0; j < thing.childItems.length; j++) {
+            const child = thing.childItems[j] as any;
+            if (child == null || typeof child !== 'object') {
+              thing.childItems[j] = { key: j, val: 'UnknownChild', data: [] };
+              repaired = true;
+              continue;
+            }
+            if (child.key === undefined || child.key === null) { child.key = j; repaired = true; }
+            if (!child.val) { child.val = 'UnknownChild'; repaired = true; }
+            if (!Array.isArray(child.data)) { child.data = []; repaired = true; }
+          }
+        }
+        if (repaired) {
+          modified = true;
+          repairedDocs++;
+        }
+      }
+
       if (modified) {
-        await doc.save();
+        if (!dryRun) {
+          await doc.save();
+        }
         updated++;
       } else {
         skipped++;
@@ -38,7 +79,7 @@ async function run() {
     }
   }
 
-  console.log('Migration complete. updated=', updated, 'skipped=', skipped, 'failed=', failed);
+  console.log('Migration complete. dryRun=', dryRun, 'updated=', updated, 'skipped=', skipped, 'failed=', failed, 'repairedDocs=', repairedDocs);
   await mongoose.disconnect();
 }
 
