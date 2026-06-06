@@ -11,6 +11,7 @@ import { extname } from 'path';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { PersonDto } from './dto/person';
 import { PersonService } from './person.service';
+import { ensureMusicStructure } from './utils/musicHelpers';
 import { v4 as uuidv4 } from 'uuid'; // for unique video IDs
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
@@ -123,6 +124,9 @@ export class PersonController {
         date: new Date().toISOString(),
         path: image.path, // store path to access later
       };
+
+      // Ensure MUSIC structure exists on creation
+      ensureMusicStructure(parsed);
 
       const createdPerson = new this.personModel(parsed);
       return await createdPerson.save();

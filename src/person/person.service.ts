@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, renameSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { StoredMedia } from './interfaces/stored-media.interface';
 import { supabase } from './common/supabase';
+import { ensureMusicStructure as ensureMusicStructureHelper, migrateAudioFromPersonalDoc as migrateAudioHelper } from './utils/musicHelpers';
 import type { Multer } from 'multer';
 
 
@@ -347,83 +348,23 @@ async getPaginatedPeopleWithSignedMedia(
 }
 
   private normalizeMusicCategoryResponse(person: any): void {
-    if (!person?.THINGS?.length) return;
+    // Ensure MUSIC category and childItems exist (non-destructive)
+    ensureMusicStructureHelper(person);
 
-    const personalThing = person.THINGS.find((thing: any) => thing.val === this.personalCategory);
-    if (!personalThing?.childItems?.length) return;
-
-    const audioItems: any[] = [];
-    for (const child of personalThing.childItems) {
-      if (!child?.data?.length) continue;
-      const remainingData: any[] = [];
-
-      for (const item of child.data) {
-        if (item?.type === 'audio') {
-          audioItems.push(item);
-        } else {
-          remainingData.push(item);
-        }
-      }
-
-      child.data = remainingData;
-    }
-
-    if (!audioItems.length) return;
-
-    let musicThing = person.THINGS.find((thing: any) => thing.val === this.musicCategory);
-    if (!musicThing) {
-      musicThing = { key: person.THINGS.length, val: this.musicCategory, childItems: [] };
-      person.THINGS.push(musicThing);
-    }
-
-    let tracksChild = musicThing.childItems.find((c: any) => c.val === this.musicChildItem);
-    if (!tracksChild) {
-      tracksChild = { key: musicThing.childItems.length, val: this.musicChildItem, data: [] };
-      musicThing.childItems.push(tracksChild);
-    }
-
-    tracksChild.data = [...(tracksChild.data || []), ...audioItems];
+    // For display purposes, collect and move audio items from PERSONAL into MUSIC
+    migrateAudioHelper(person);
   }
 
   private async migrateAudioFromPersonalDoc(person: any): Promise<boolean> {
-    if (!person?.THINGS?.length) return false;
-
-    const personalThing = person.THINGS.find((thing: any) => thing.val === this.personalCategory);
-    if (!personalThing?.childItems?.length) return false;
-
-    const audioItems: any[] = [];
-    for (const child of personalThing.childItems) {
-      if (!child?.data?.length) continue;
-
-      const remainingData: any[] = [];
-      for (const item of child.data) {
-        if (item?.type === 'audio') {
-          audioItems.push(item);
-        } else {
-          remainingData.push(item);
-        }
-      }
-      child.data = remainingData;
+    const res = migrateAudioHelper(person);
+    if (!res.migrated) return false;
+    try {
+      person.markModified?.('THINGS');
+      await person.save();
+      return true;
+    } catch (e) {
+      return false;
     }
-
-    if (!audioItems.length) return false;
-
-    let musicThing = person.THINGS.find((thing: any) => thing.val === this.musicCategory);
-    if (!musicThing) {
-      musicThing = { key: person.THINGS.length, val: this.musicCategory, childItems: [] };
-      person.THINGS.push(musicThing);
-    }
-
-    let tracksChild = musicThing.childItems.find((c: any) => c.val === this.musicChildItem);
-    if (!tracksChild) {
-      tracksChild = { key: musicThing.childItems.length, val: this.musicChildItem, data: [] };
-      musicThing.childItems.push(tracksChild);
-    }
-
-    tracksChild.data = [...(tracksChild.data || []), ...audioItems];
-    person.markModified?.('THINGS');
-    await person.save();
-    return true;
   }
 
 
