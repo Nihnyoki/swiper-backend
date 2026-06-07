@@ -1,6 +1,6 @@
 // src/person/person.controller.ts
 // src/person/person.controller.ts
-import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UploadedFiles, UseInterceptors, HttpException, HttpStatus, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Headers, UploadedFile, UploadedFiles, UseInterceptors, HttpException, HttpStatus, Query, ParseIntPipe, Patch } from '@nestjs/common';
 import { Express } from "express";
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { InjectModel } from '@nestjs/mongoose';
@@ -11,6 +11,7 @@ import { extname } from 'path';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { PersonDto } from './dto/person';
 import { PersonService } from './person.service';
+import { ensureContentStructure, convertPersonalToContent, validateDisallowedCategories } from './utils/categoryHelpers';
 import { ensureMusicStructure } from './utils/musicHelpers';
 import { v4 as uuidv4 } from 'uuid'; // for unique video IDs
 import { join } from 'path';
@@ -125,6 +126,12 @@ export class PersonController {
         path: image.path, // store path to access later
       };
 
+      // Convert old PERSONAL category to C👁️NT👀NT and validate THINGS
+      if (parsed.THINGS) {
+        convertPersonalToContent(parsed);
+        validateDisallowedCategories(parsed);
+      }
+      ensureContentStructure(parsed);
       // Ensure MUSIC structure exists on creation
       ensureMusicStructure(parsed);
 
@@ -132,7 +139,44 @@ export class PersonController {
       return await createdPerson.save();
     } catch (e) {
       console.error('Add person error:', e);
+      if (e instanceof Error && e.message?.startsWith('Category')) {
+        throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
+      }
       throw new HttpException('Failed to add person', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Patch(':personId')
+  @ApiOperation({ summary: 'Update a person record' })
+  @ApiResponse({ status: 200, description: 'Person updated successfully.' })
+  @ApiResponse({ status: 400, description: 'Invalid category or payload' })
+  @ApiResponse({ status: 404, description: 'Person not found' })
+  async updatePerson(
+    @Param('personId') personId: string,
+    @Body() personDto: any,
+  ): Promise<Person> {
+    try {
+      const parsed = {
+        ...personDto,
+        THINGS: personDto.THINGS ? JSON.parse(personDto.THINGS) : [],
+      };
+
+      if (parsed.THINGS) {
+        convertPersonalToContent(parsed);
+        validateDisallowedCategories(parsed);
+      }
+      ensureContentStructure(parsed);
+
+      return await this.personService.updatePerson(personId, parsed);
+    } catch (e) {
+      console.error('Update person error:', e);
+      if (e instanceof Error && e.message?.startsWith('Category')) {
+        throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
+      }
+      if ((e as any).status === HttpStatus.NOT_FOUND) {
+        throw new HttpException('Person not found', HttpStatus.NOT_FOUND);
+      }
+      throw new HttpException('Failed to update person', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
