@@ -37,10 +37,12 @@ export function ensureMusicStructure(person: any): boolean {
   return modified;
 }
 
+import { contentCategory } from './categoryHelpers';
+
 export function migrateAudioFromPersonalDoc(person: any): { migrated: boolean; count: number } {
   if (!person?.THINGS?.length) return { migrated: false, count: 0 };
 
-  const personalThing = person.THINGS.find((thing: any) => thing.val === 'PERSONAL');
+  const personalThing = person.THINGS.find((thing: any) => thing.val === 'PERSONAL' || thing.val === contentCategory);
   if (!personalThing?.childItems?.length) return { migrated: false, count: 0 };
 
   const audioItems: any[] = [];
@@ -74,5 +76,5 @@ export function migrateAudioFromPersonalDoc(person: any): { migrated: boolean; c
 
   tracksChild.data = [...(tracksChild.data || []), ...audioItems];
 
-  return { migrated: true, count: audioItems.length };
-}
+    return { migrated: true, count: audioItems.length };
+  }

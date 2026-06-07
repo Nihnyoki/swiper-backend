@@ -8,6 +8,7 @@ import { join } from 'path';
 import { StoredMedia } from './interfaces/stored-media.interface';
 import { supabase } from './common/supabase';
 import { ensureMusicStructure as ensureMusicStructureHelper, migrateAudioFromPersonalDoc as migrateAudioHelper } from './utils/musicHelpers';
+import { normalizeContentResponse, contentCategory } from './utils/categoryHelpers';
 import type { Multer } from 'multer';
 
 
@@ -31,6 +32,7 @@ export class PersonService {
 
   private readonly musicCategory = 'MUSIC';
   private readonly personalCategory = 'PERSONAL';
+  private readonly contentCategory = contentCategory;
   private readonly musicChildItem = 'Tracks';
 
   async findPeople(): Promise<Person[]> {
@@ -289,24 +291,37 @@ async getPersonsWithSignedMedia(): Promise<Person[]> {
 
   for (const person of persons) {
     this.normalizeMusicCategoryResponse(person);
+    normalizeContentResponse(person);
     await this.attachSignedUrls(person);
   }
 
   return persons;
 }
 
+async getRandomPeopleWithSignedMedia(limit = 10): Promise<Person[]> {
+  const size = Math.max(1, Math.min(100, limit || 10));
+  const people = await this.personModel.aggregate([{ $sample: { size } }]);
 
-async getRandomPeopleWithSignedMedia(limit: number): Promise<Person[]> {
-  const people = await this.personModel.aggregate([{ $sample: { size: limit } }]);
-
+  // run non-destructive normalization and attach signed urls
   for (const person of people) {
     this.normalizeMusicCategoryResponse(person);
+    normalizeContentResponse(person);
     await this.attachSignedUrls(person);
   }
 
-  return people;
+  return people as Person[];
 }
 
+async updatePerson(personId: string, payload: any): Promise<Person> {
+  const person = await this.personModel.findById(personId);
+  if (!person) {
+    throw new NotFoundException('Person not found');
+  }
+
+  Object.assign(person, payload);
+  person.markModified('THINGS');
+  return await person.save();
+}
 
 async getPaginatedPeopleWithSignedMedia(
   page: number,
@@ -452,8 +467,10 @@ private async signIfExists(path?: string, media?: string): Promise<string | null
 
       if (categoryId === this.musicCategory) {
         const personalPerson = await this.personModel.findOne({
-          'THINGS.val': this.personalCategory,
-          'THINGS.childItems.data.type': 'audio',
+          $and: [
+            { 'THINGS.childItems.data.type': 'audio' },
+            { $or: [{ 'THINGS.val': this.personalCategory }, { 'THINGS.val': this.contentCategory }] },
+          ],
         });
 
         if (personalPerson) {
